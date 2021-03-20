@@ -133,7 +133,3 @@ dmypy.json
 
 # Mac OS
 .DS_Store
-
-# This Project
-*.txt
-*.zip
