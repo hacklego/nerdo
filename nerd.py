@@ -9,6 +9,29 @@ import argparse
 import sys
 import tempfile
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+class DownloadError(Exception):
+    pass
+
+
+def init_log(verbosity=0, log_file=None):
+
+    if verbosity == 1:
+        level = logging.INFO
+    elif verbosity > 1:
+        level = logging.DEBUG
+    else:
+        level = logging.WARN
+
+    logging.basicConfig(
+        level=level,
+        filename=log_file,
+        format="%(levelname)s:%(name)s:%(message)s"
+    )
+
 
 def download_yesterday_domains_from_whoisdownload(
         directory: str
@@ -25,8 +48,13 @@ def download_yesterday_domains_from_whoisdownload(
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.47 Safari/537.36'
     }
 
+    logger.info("Downloading domains from whoisdownload")
 
-    r = get(BASE_URI+resource, headers=headers)
+    try:
+        r = get(BASE_URI+resource, headers=headers)
+    except RequestException as e:
+        logger.error("Error downloading file: {}".format(e))
+        raise DownloadError()
 
     with open(os.path.join(directory,filename), 'wb') as f:
         f.write(r.content)
@@ -94,8 +122,16 @@ def main():
         "If none then stdin will be use",
         nargs="*",
     )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="count",
+        help="Verbosity mode",
+        default=0
+    )
+
     args = parser.parse_args()
 
+    init_log(args.verbose)
     keywords = list(read_text_targets(args.keywords))
 
     with tempfile.TemporaryDirectory() as tmpdirname:
