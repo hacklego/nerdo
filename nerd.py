@@ -1,12 +1,12 @@
 from datetime import datetime, timedelta
 from base64 import b64encode
 from requests import get
+from typing import Any, Iterator, Optional
 
 import zipfile
 import numpy as np
-
-KEYWORDS = 'one-esecurity', 'oneesecurity', 'onesecurity'
-
+import argparse
+import sys
 
 def download_yesterday_domains_from_whoisdownload():
 
@@ -55,12 +55,11 @@ def levenshtein(
             else:
                 matrix[x, y] = minimum + 1
 
-    #print(matrix)
-
     return matrix[size_x-1, size_y-1]
 
 
 def parse_nerd(
+        keywords: str
 ) -> (list, list):
 
     high_confidence_domains = list()
@@ -72,7 +71,7 @@ def parse_nerd(
         for line in f:
             domain_name = line.split('\n')[0].split('.')[0]
 
-            for keyword in KEYWORDS:
+            for keyword in keywords:
                 if levenshtein(keyword, domain_name) <= 1:
                     high_confidence_domains.append(line.split('\n')[0])
                 elif keyword in domain_name:
@@ -81,17 +80,62 @@ def parse_nerd(
     return high_confidence_domains, low_confidence_domains
 
 
+def main():
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "keywords",
+        help="string or file with lines to process. "
+        "If none then stdin will be use",
+        nargs="*",
+    )
+    args = parser.parse_args()
+
+    keywords = list(read_text_targets(args.keywords))
+
+    download_yesterday_domains_from_whoisdownload()
+    h, l = parse_nerd(keywords)
+
+    for result in h:
+        print("high {}".format(result))
+
+    for result in l:
+        print("low {}".format(result))
+
+
+def read_text_targets(targets: Any) -> Iterator[str]:
+    yield from read_text_lines(read_targets(targets))
+
+
+def read_targets(targets: Optional[Any]) -> Iterator[str]:
+    """Function to process the program ouput that allows to read an array
+    of strings or lines of a file in a standard way. In case nothing is
+    provided, input will be taken from stdin.
+    """
+    if not targets:
+        yield from sys.stdin
+
+    for target in targets:
+        try:
+            with open(target) as fi:
+                yield from fi
+        except FileNotFoundError:
+            yield target
+
+
+def read_text_lines(fd: Iterator[str]) -> Iterator[str]:
+    """To read lines from a file and skip empty lines or those commented
+    (starting by #)
+    """
+    for line in fd:
+        line = line.strip()
+        if line == "":
+            continue
+        if line.startswith("#"):
+            continue
+
+        yield line
 
 if __name__ == '__main__':
-    download_yesterday_domains_from_whoisdownload()
-    h, l = parse_nerd()
+    main()
 
-    print('There are {} high confidence domains and {} low confidence domains:\n'.format(len(h), len(l)))
-
-    print('High\n')
-    for domain in h:
-        print(domain)
-
-    print('\nLow\n')
-    for domain in l:
-        print(domain)
