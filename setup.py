@@ -20,7 +20,7 @@ setuptools.setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "nerd = nerd:main",
+            "nerd = nerd.main:main",
         ]
     },
     classifiers=[
