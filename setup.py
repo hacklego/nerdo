@@ -11,13 +11,14 @@ name = "nerdo"
 setuptools.setup(
     name=name,
     version="0.0.1",
-    author="Iago Gomez",
+    author="Iago Salgado",
     author_email="igsalgado@protonmail.com",
     description="NEwly Registered DOmains",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=setuptools.find_packages(),
     install_requires=requirements,
+    url="https://github.com/hacklego/nerdo",
     entry_points={
         "console_scripts": [
             "nerdo = nerdo.main:main",
