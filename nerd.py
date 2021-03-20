@@ -7,8 +7,12 @@ import zipfile
 import numpy as np
 import argparse
 import sys
+import tempfile
+import os
 
-def download_yesterday_domains_from_whoisdownload():
+def download_yesterday_domains_from_whoisdownload(
+        directory: str
+):
 
     BASE_URI = "https://www.whoisdownload.com/download-panel/free-download-file/"
     yesterday = datetime.now() - timedelta(days=1)
@@ -24,11 +28,11 @@ def download_yesterday_domains_from_whoisdownload():
 
     r = get(BASE_URI+resource, headers=headers)
 
-    with open(filename, 'wb') as f:
+    with open(os.path.join(directory,filename), 'wb') as f:
         f.write(r.content)
 
-    with zipfile.ZipFile(filename, 'r') as zip_file:
-        zip_file.extractall('.')
+    with zipfile.ZipFile(os.path.join(directory,filename), 'r') as zip_file:
+        zip_file.extractall(directory)
 
 
 def levenshtein(
@@ -59,7 +63,8 @@ def levenshtein(
 
 
 def parse_nerd(
-        keywords: str
+        keywords: str,
+        directory: str
 ) -> (list, list):
 
     high_confidence_domains = list()
@@ -67,7 +72,7 @@ def parse_nerd(
 
     filename = "domain-names.txt"
 
-    with open(filename, 'r') as f:
+    with open(os.path.join(directory, filename), 'r') as f:
         for line in f:
             domain_name = line.split('\n')[0].split('.')[0]
 
@@ -93,8 +98,9 @@ def main():
 
     keywords = list(read_text_targets(args.keywords))
 
-    download_yesterday_domains_from_whoisdownload()
-    h, l = parse_nerd(keywords)
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        download_yesterday_domains_from_whoisdownload(tmpdirname)
+        h, l = parse_nerd(keywords, tmpdirname)
 
     for result in h:
         print("high {}".format(result))
