@@ -1,2 +1,2 @@
-# nerd
-Newly Registered Domains
+# nerdo
+NEwly Registered DOmains
