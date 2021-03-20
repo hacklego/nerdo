@@ -115,10 +115,12 @@ def parse_nerd(
 
 def main():
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="NERDO: NEwly Registered DOmains. A tool to detect suspicious domains."
+    )
     parser.add_argument(
         "keywords",
-        help="string or file with lines to process. "
+        help="string or file with keywords to look for in the newly registered domains. "
         "If none then stdin will be use",
         nargs="*",
     )

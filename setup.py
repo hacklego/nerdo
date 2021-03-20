@@ -6,21 +6,21 @@ with open("README.md", "r") as fh:
 with open('requirements.txt') as f:
     requirements = f.read().splitlines()
 
-name = "nerd"
+name = "nerdo"
 
 setuptools.setup(
     name=name,
     version="0.0.1",
     author="Iago Gomez",
     author_email="igsalgado@protonmail.com",
-    description="Newly Registered Domains",
+    description="NEwly Registered DOmains",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=setuptools.find_packages(),
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "nerd = nerd.main:main",
+            "nerdo = nerdo.main:main",
         ]
     },
     classifiers=[
