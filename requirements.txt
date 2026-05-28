@@ -1,2 +1,1 @@
-requests
-numpy
+requests>=2.28

@@ -1,134 +1,114 @@
-from datetime import datetime, timedelta
-from base64 import b64encode
-from requests import get
-from typing import Any, Iterator, Optional
+"""NERDO: NEwly Registered DOmains — detect suspicious domain registrations."""
 
-import zipfile
-import numpy as np
 import argparse
+import csv
+import io
+import json
+import logging
 import sys
 import tempfile
-import os
-import logging
+from collections.abc import Iterator
+from typing import Any
+
+from .analyzer import AnalysisResult, analyze_domains
+from .sources import download_domains
 
 logger = logging.getLogger(__name__)
 
-class DownloadError(Exception):
-    pass
 
-
-def init_log(verbosity=0, log_file=None):
-
+def init_log(verbosity: int = 0, log_file: str | None = None):
     if verbosity == 1:
         level = logging.INFO
     elif verbosity > 1:
         level = logging.DEBUG
     else:
-        level = logging.WARN
+        level = logging.WARNING
 
     logging.basicConfig(
         level=level,
         filename=log_file,
-        format="%(levelname)s:%(name)s:%(message)s"
+        format="%(levelname)s:%(name)s:%(message)s",
     )
 
 
-def download_yesterday_domains_from_whoisdownload(
-        directory: str
-):
-
-    BASE_URI = "https://www.whoisdownload.com/download-panel/free-download-file/"
-    yesterday = datetime.now() - timedelta(days=1)
-    filename = yesterday.strftime("%Y-%m-%d")+'.zip'
-    b64_filename = b64encode(filename.encode('ascii'))
-
-    resource = b64_filename.decode() + '/nrd/home'
-
-    headers={
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.47 Safari/537.36'
-    }
-
-    logger.info("Downloading domains from whoisdownload")
-
-    try:
-        r = get(BASE_URI+resource, headers=headers)
-    except RequestException as e:
-        logger.error("Error downloading file: {}".format(e))
-        raise DownloadError()
-
-    with open(os.path.join(directory,filename), 'wb') as f:
-        f.write(r.content)
-
-    with zipfile.ZipFile(os.path.join(directory,filename), 'r') as zip_file:
-        zip_file.extractall(directory)
+def format_text(result: AnalysisResult) -> str:
+    """Format results as human-readable text."""
+    lines = []
+    for match in result.high:
+        lines.append(f"high\t{match.domain}\t({match.technique}, keyword={match.keyword})")
+    for match in result.medium:
+        lines.append(f"medium\t{match.domain}\t({match.technique}, keyword={match.keyword})")
+    for match in result.low:
+        lines.append(f"low\t{match.domain}\t({match.technique}, keyword={match.keyword})")
+    return "\n".join(lines)
 
 
-def levenshtein(
-        seq1: str,
-        seq2: str
-) -> int:
-
-    size_x = len(seq1) + 1
-    size_y = len(seq2) + 1
-
-    matrix = np.zeros((size_x, size_y))
-
-    for x in range(size_x):
-        matrix[x, 0] = x
-
-    for y in range(size_y):
-        matrix[0, y] = y
-
-    for x in range(1, size_x):
-        for y in range(1, size_y):
-            minimum = min(matrix[x-1, y], matrix[x-1, y-1], matrix[x, y-1])
-            if seq1[x-1] == seq2[y-1]:
-                matrix[x, y] = minimum
-            else:
-                matrix[x, y] = minimum + 1
-
-    return matrix[size_x-1, size_y-1]
+def format_json(result: AnalysisResult) -> str:
+    """Format results as JSON."""
+    data = []
+    for match in result.all_matches:
+        entry = {
+            "domain": match.domain,
+            "keyword": match.keyword,
+            "confidence": match.confidence,
+            "technique": match.technique,
+        }
+        if match.distance is not None:
+            entry["distance"] = match.distance
+        data.append(entry)
+    return json.dumps(data, indent=2)
 
 
-def parse_nerd(
-        keywords: str,
-        directory: str
-) -> (list, list):
+def format_csv(result: AnalysisResult) -> str:
+    """Format results as CSV."""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["confidence", "domain", "keyword", "technique", "distance"])
+    for match in result.all_matches:
+        writer.writerow([
+            match.confidence,
+            match.domain,
+            match.keyword,
+            match.technique,
+            match.distance if match.distance is not None else "",
+        ])
+    return output.getvalue()
 
-    high_confidence_domains = list()
-    low_confidence_domains= list()
 
-    filename = "domain-names.txt"
-
-    with open(os.path.join(directory, filename), 'r') as f:
-        for line in f:
-            domain_name = line.split('\n')[0].split('.')[0]
-
-            for keyword in keywords:
-                if levenshtein(keyword, domain_name) <= 1:
-                    high_confidence_domains.append(line.split('\n')[0])
-                elif keyword in domain_name:
-                    low_confidence_domains.append(line.split('\n')[0])
-
-    return high_confidence_domains, low_confidence_domains
+FORMATTERS = {
+    "text": format_text,
+    "json": format_json,
+    "csv": format_csv,
+}
 
 
 def main():
-
     parser = argparse.ArgumentParser(
-        description="NERDO: NEwly Registered DOmains. A tool to detect suspicious domains."
+        description="NERDO: NEwly Registered DOmains — detect suspicious domain registrations "
+        "for brand protection and typosquatting analysis.",
     )
     parser.add_argument(
         "keywords",
-        help="string or file with keywords to look for in the newly registered domains. "
-        "If none then stdin will be use",
         nargs="*",
+        help="Keywords to search for (strings or paths to files with keywords). "
+        "Reads from stdin if none provided.",
     )
     parser.add_argument(
         "-v", "--verbose",
         action="count",
-        help="Verbosity mode",
-        default=0
+        default=0,
+        help="Increase verbosity (-v for info, -vv for debug).",
+    )
+    parser.add_argument(
+        "-f", "--format",
+        choices=["text", "json", "csv"],
+        default="text",
+        help="Output format (default: text).",
+    )
+    parser.add_argument(
+        "--high-only",
+        action="store_true",
+        help="Only show high confidence matches.",
     )
 
     args = parser.parse_args()
@@ -136,28 +116,37 @@ def main():
     init_log(args.verbose)
     keywords = list(read_text_targets(args.keywords))
 
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        download_yesterday_domains_from_whoisdownload(tmpdirname)
-        h, l = parse_nerd(keywords, tmpdirname)
+    if not keywords:
+        parser.error("No keywords provided. Pass keywords as arguments, a file, or via stdin.")
 
-    for result in h:
-        print("high {}".format(result))
+    logger.info("Analyzing domains for keywords: %s", keywords)
 
-    for result in l:
-        print("low {}".format(result))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        domain_file = download_domains(tmpdir)
+        result = analyze_domains(domain_file, keywords)
+
+    if args.high_only:
+        result.medium.clear()
+        result.low.clear()
+
+    formatter = FORMATTERS[args.format]
+    output = formatter(result)
+    if output:
+        print(output)
+
+    if not result.all_matches:
+        logger.info("No suspicious domains found.")
 
 
 def read_text_targets(targets: Any) -> Iterator[str]:
     yield from read_text_lines(read_targets(targets))
 
 
-def read_targets(targets: Optional[Any]) -> Iterator[str]:
-    """Function to process the program ouput that allows to read an array
-    of strings or lines of a file in a standard way. In case nothing is
-    provided, input will be taken from stdin.
-    """
+def read_targets(targets: Any | None) -> Iterator[str]:
+    """Read keywords from arguments, files, or stdin."""
     if not targets:
         yield from sys.stdin
+        return
 
     for target in targets:
         try:
@@ -168,18 +157,12 @@ def read_targets(targets: Optional[Any]) -> Iterator[str]:
 
 
 def read_text_lines(fd: Iterator[str]) -> Iterator[str]:
-    """To read lines from a file and skip empty lines or those commented
-    (starting by #)
-    """
+    """Yield non-empty, non-comment lines."""
     for line in fd:
         line = line.strip()
-        if line == "":
-            continue
-        if line.startswith("#"):
-            continue
+        if line and not line.startswith("#"):
+            yield line
 
-        yield line
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-
