@@ -24,14 +24,6 @@ NERDO downloads newly registered domains (last 24h) and compares them against yo
 
 ## Installation
 
-From PyPI:
-
-```bash
-pip install nerdo
-```
-
-From source:
-
 ```bash
 git clone https://github.com/hacklego/nerdo.git
 cd nerdo
