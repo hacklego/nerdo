@@ -24,15 +24,29 @@ NERDO downloads newly registered domains (last 24h) and compares them against yo
 
 ## Installation
 
+NERDO is a CLI tool, so installing with [pipx](https://pipx.pypa.io/) is recommended — it isolates the install in its own venv and exposes the `nerdo` command globally:
+
 ```bash
 git clone https://github.com/hacklego/nerdo.git
 cd nerdo
+pipx install .
+```
+
+Alternatively, install inside a virtualenv:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install .
 ```
+
+On Debian/Ubuntu (PEP 668), system-wide `pip install .` is blocked by design — use pipx or a venv as shown above.
 
 For development:
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
